@@ -7,6 +7,28 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
+#include <algorithm>
+
+static std::string to_upper_str(const std::string& s) {
+    std::string out = s;
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    return out;
+}
+
+// Handle a new connection
+static void handle_connection(int conn_fd) {
+    std::string buffer;
+    char readBuf[1024];
+
+    while(true) {
+        ssize_t n = recv(conn_fd, readBuf, sizeof(readBuf), 0);
+
+        if(n < 0) break;    // client disconencted
+    }
+    close(conn_fd);
+}
 
 int main(int argc, char **argv)
 {
@@ -14,15 +36,15 @@ int main(int argc, char **argv)
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0)
+    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd < 0)
     {
         std::cerr << "Failed to create server socket\n";
         return 1;
     }
 
     int reuse = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
     {
         std::cerr << "setsockopt failed\n";
         return 1;
@@ -33,14 +55,14 @@ int main(int argc, char **argv)
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(6379); // redis port
 
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) != 0)
+    if (bind(listen_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) != 0)
     {
         std::cerr << "Failed to bind to port 6379\n";
         return 1;
     }
 
     int connection_backlog = 5;
-    if (listen(server_fd, connection_backlog) != 0)
+    if (listen(listen_fd, connection_backlog) != 0)
     {
         std::cerr << "listen failed\n";
         return 1;
@@ -52,8 +74,19 @@ int main(int argc, char **argv)
 
     std::cout << "Logs from your program will appear here!\n";
 
-    accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-    std::cout << "Client connected\n";
+    
+    while(true) {
+        struct sockaddr_in client_addr;
+        socklen_t client_addr_len = sizeof(client_addr);
+        int conn_fd = accept(listen_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+        if(conn_fd < 0) {
+            std::cerr << "Error accepting connection\n";
+        }
+        std::cout << "Client connected\n";
+        std::thread t(handle_connection, conn_fd);
+        t.detach();
+    }
 
+    close(listen_fd);
     return 0;
 }
