@@ -30,7 +30,7 @@ public:
     std::optional<ParseError> error;
 
     ParseResult() = default;
-    ParseResult(T v) : status(ParseStatus::Ok), value(std::move(v)) {}
+    ParseResult(T v) : status(ParseStatus::Ok), data(std::move(v)) {}
     ParseResult(ParseError err) : status(ParseStatus::Error), error(std::move(err)) {}
 
     bool is_ok() const { return status == ParseStatus::Ok; }
