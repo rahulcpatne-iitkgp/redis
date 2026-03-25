@@ -6,9 +6,7 @@
 #include <memory>
 #include <cstdint>
 
-namespace {
-
-ParseResult<long long> parse_strict_ll(const std::string& s) {
+static ParseResult<long long> parse_strict_ll(const std::string& s) {
     size_t idx = 0;
     try {
         long long v = std::stoll(s, &idx, 10);
@@ -20,8 +18,6 @@ ParseResult<long long> parse_strict_ll(const std::string& s) {
         return ParseError{"Invalid integer format"};
     }
 }
-
-} // namespace
 
 ParseResult<std::string> parse_line(BufferCursor& cur) {
     auto crlf_pos = cur.find_crlf();
@@ -218,4 +214,81 @@ RespParseResult parse_value(BufferCursor& cur) {
         case '*': return parse_array(cur);
         default:  return ParseError{"Invalid RESP type"};
     }
+}
+
+ParseResult<Command> parse_command(BufferCursor& cur) {
+    size_t saved = cur.position();
+
+    auto array_res = parse_value(cur);
+    if (array_res.need_more_data()) {
+        cur.set_position(saved);
+        return ParseResult<Command>();
+    }
+    if (array_res.is_error()) {
+        cur.set_position(saved);
+        return ParseResult<Command>(
+            ParseError{"Failed to parse command: " + array_res.unwrap_error().message}
+        );
+    }
+
+    auto& root = *array_res.unwrap();
+    if (!std::holds_alternative<Array>(root.data)) {
+        cur.set_position(saved);
+        return ParseResult<Command>(ParseError{"Expected a RESP array for command"});
+    }
+
+    Array& arr = std::get<Array>(root.data);
+    if (!arr.items || arr.items->empty()) {
+        cur.set_position(saved);
+        return ParseResult<Command>(ParseError{"Command array cannot be empty"});
+    }
+
+    const auto& items = *arr.items;
+
+    if (!std::holds_alternative<BulkString>(items[0]->data)) {
+        cur.set_position(saved);
+        return ParseResult<Command>(ParseError{"Command name must be a bulk string"});
+    }
+
+    BulkString& cmd_name_bs = std::get<BulkString>(items[0]->data);
+    if (!cmd_name_bs.data) {
+        cur.set_position(saved);
+        return ParseResult<Command>(ParseError{"Command name cannot be null"});
+    }
+
+    Command cmd;
+    cmd.name = std::move(*cmd_name_bs.data);
+
+    for (size_t i = 1; i < items.size(); ++i) {
+        if (!std::holds_alternative<BulkString>(items[i]->data)) {
+            cur.set_position(saved);
+            return ParseResult<Command>(ParseError{"Command arguments must be bulk strings"});
+        }
+
+        BulkString& arg_bs = std::get<BulkString>(items[i]->data);
+        if (!arg_bs.data) {
+            cur.set_position(saved);
+            return ParseResult<Command>(ParseError{"Command arguments cannot be null"});
+        }
+
+        cmd.args.push_back(std::move(*arg_bs.data));
+    }
+
+    return cmd;
+}
+
+std::string encodeSimpleString(const std::string& s) {
+    return "+" + s + "\r\n";
+}
+
+std::string encodeError(const std::string& msg) {
+    return "-" + msg + "\r\n";
+}
+
+std::string encodeBulkString(const std::string& s) {
+    return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
+}
+
+std::string encodeNullBulkString() {
+    return "$-1\r\n";
 }

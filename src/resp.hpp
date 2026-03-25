@@ -69,13 +69,18 @@ struct RespValue {
     std::variant<SimpleString, ErrorString, Integer, BulkString, Array> data;
 };
 
+struct Command {
+    std::string name;
+    std::vector<std::string> args;
+};
+
 class BufferCursor {
 private:
     std::string_view buf_;
     size_t pos_ = 0;
 
 public:
-    explicit BufferCursor(std::string_view buf) : buf_(buf) {}
+    explicit BufferCursor(std::string_view buf, size_t pos = 0) : buf_(buf), pos_(pos) {}
 
     bool eof() const { return pos_ >= buf_.size(); }
     size_t position() const { return pos_; }
@@ -124,5 +129,11 @@ RespParseResult parse_bulk_string(BufferCursor& cur);
 RespParseResult parse_array(BufferCursor& cur);
 
 RespParseResult parse_value(BufferCursor& cur);
+ParseResult<Command> parse_command(BufferCursor& cur);
+
+std::string encodeSimpleString(const std::string& s);
+std::string encodeError(const std::string& msg);
+std::string encodeBulkString(const std::string& s);
+std::string encodeNullBulkString();
 
 #endif // RESP_HPP

@@ -9,6 +9,10 @@
 #include <netdb.h>
 #include <thread>
 #include <algorithm>
+#include <vector>
+#include <string_view>
+
+#include "resp.hpp"
 
 static std::string to_upper_str(const std::string& s) {
     std::string out = s;
@@ -20,12 +24,28 @@ static std::string to_upper_str(const std::string& s) {
 // Handle a new connection
 static void handle_connection(int conn_fd) {
     std::string buffer;
-    char readBuf[1024];
+    char read_buf[1024];
+    char write_buf[1024];
+    size_t offset = 0;
 
     while(true) {
-        ssize_t n = recv(conn_fd, readBuf, sizeof(readBuf), 0);
-
-        if(n < 0) break;    // client disconencted
+        ssize_t n = recv(conn_fd, read_buf, sizeof(read_buf), 0);
+        if(n <= 0) break;    // client disconencted
+        buffer.append(read_buf, n);
+        BufferCursor cur(buffer, offset);
+        auto parse_res = parse_command(cur);
+        if(parse_res.need_more_data()) continue;
+        if(parse_res.is_error()) {
+            std::string err = encodeError(parse_res.error.value().message);
+            strncpy(write_buf, err.c_str(), sizeof(write_buf));
+            ssize_t n = send(conn_fd, write_buf, err.length(), 0);
+        }
+        Command cmd = std::move(parse_res.data.value());
+        if(cmd.name == "PING") {
+            std::string response = encodeSimpleString("PONG");
+            strncpy(write_buf, response.c_str(), sizeof(write_buf));
+            ssize_t n = send(conn_fd, write_buf, response.length(), 0);
+        }
     }
     close(conn_fd);
 }
