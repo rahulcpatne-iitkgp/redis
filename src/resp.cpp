@@ -5,6 +5,14 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <algorithm>
+
+static std::string to_upper_str(const std::string& s) {
+    std::string out = s;
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    return out;
+}
 
 static ParseResult<long long> parse_strict_ll(const std::string& s) {
     size_t idx = 0;
@@ -257,7 +265,7 @@ ParseResult<Command> parse_command(BufferCursor& cur) {
     }
 
     Command cmd;
-    cmd.name = std::move(*cmd_name_bs.data);
+    cmd.name = std::move(to_upper_str(*cmd_name_bs.data));
 
     for (size_t i = 1; i < items.size(); ++i) {
         if (!std::holds_alternative<BulkString>(items[i]->data)) {

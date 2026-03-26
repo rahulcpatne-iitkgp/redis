@@ -31,20 +31,37 @@ static void handle_connection(int conn_fd) {
     while(true) {
         ssize_t n = recv(conn_fd, read_buf, sizeof(read_buf), 0);
         if(n <= 0) break;    // client disconencted
+
         buffer.append(read_buf, n);
-        BufferCursor cur(buffer, offset);
-        auto parse_res = parse_command(cur);
-        if(parse_res.need_more_data()) continue;
-        if(parse_res.is_error()) {
-            std::string err = encodeError(parse_res.error.value().message);
-            strncpy(write_buf, err.c_str(), sizeof(write_buf));
-            ssize_t n = send(conn_fd, write_buf, err.length(), 0);
-        }
-        Command cmd = std::move(parse_res.data.value());
-        if(cmd.name == "PING") {
-            std::string response = encodeSimpleString("PONG");
-            strncpy(write_buf, response.c_str(), sizeof(write_buf));
-            ssize_t n = send(conn_fd, write_buf, response.length(), 0);
+        while(true) {
+            BufferCursor cur(buffer, offset);
+            auto parse_res = parse_command(cur);
+            if(parse_res.need_more_data()) break;
+            if(parse_res.is_error()) {
+                std::string err = encodeError(parse_res.error.value().message);
+                strncpy(write_buf, err.c_str(), sizeof(write_buf));
+                ssize_t n = send(conn_fd, write_buf, err.length(), MSG_NOSIGNAL);
+            }
+            Command cmd = std::move(parse_res.data.value());
+            offset = cur.position();
+
+            std::string response;
+            std::string upper_name = to_upper_str(cmd.name);
+            if (upper_name == "PING") {
+                response = encodeSimpleString("PONG");
+            } else if (upper_name == "ECHO") {
+                if(!cmd.args.empty()) {
+                    response = encodeBulkString(cmd.args[0]);
+                } else {
+                    response = encodeNullBulkString();
+                }
+            } else {
+                response = encodeError("unknown command");
+            }
+            if(send(conn_fd, response.data(), response.size(), MSG_NOSIGNAL) < 0) {
+                std::cerr << "Error sending response\n";
+                break;  // if client disconnected, next recv will fail
+            }
         }
     }
     close(conn_fd);
