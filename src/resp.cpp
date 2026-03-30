@@ -285,18 +285,18 @@ ParseResult<Command> parse_command(BufferCursor& cur) {
     return cmd;
 }
 
-std::string encodeSimpleString(const std::string& s) {
+std::string encode_simple_string(const std::string& s) {
     return "+" + s + "\r\n";
 }
 
-std::string encodeError(const std::string& msg) {
+std::string encode_error(const std::string& msg) {
     return "-" + msg + "\r\n";
 }
 
-std::string encodeBulkString(const std::string& s) {
-    return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
-}
-
-std::string encodeNullBulkString() {
-    return "$-1\r\n";
+std::string encode_bulk_string(const std::optional<std::string>& s) {
+    if(s.has_value()) {
+        return "$" + std::to_string((*s).size()) + "\r\n" + *s + "\r\n";
+    } else {
+        return "$-1\r\n";
+    }
 }

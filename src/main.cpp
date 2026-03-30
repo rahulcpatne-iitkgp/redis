@@ -15,6 +15,9 @@
 #include <fcntl.h>
 
 #include "resp.hpp"
+#include "kvstore.hpp"
+
+KVStore kv_store;
 
 static bool set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -96,7 +99,7 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
         auto parse_res = parse_command(cursor);
         if (parse_res.need_more_data()) break;
         if (parse_res.is_error()) {
-            std::string err = encodeError(parse_res.error.value().message);
+            std::string err = encode_error(parse_res.error.value().message);
             enqueue_response(epfd, fd_info, err);
             conn->to_close = true;
             break;
@@ -107,15 +110,62 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
 
         std::string response;
         if (cmd.name == "PING") {
-            response = encodeSimpleString("PONG");
+            response = encode_simple_string("PONG");
         } else if (cmd.name == "ECHO") {
             if (!cmd.args.empty()) {
-                response = encodeBulkString(cmd.args[0]);
+                response = encode_bulk_string(cmd.args[0]);
             } else {
-                response = encodeNullBulkString();
+                response = encode_bulk_string(std::nullopt);
             }
+        } else if (cmd.name == "SET") {
+            if(cmd.args.size() < 2) {
+                response = encode_error("invalid command usage SET");
+                enqueue_response(epfd, fd_info, response);
+                continue;
+            }
+            std::string key = std::move(cmd.args[0]);
+            std::string value = std::move(cmd.args[1]);
+            int64_t expiry_in_ms = 0;
+            if(cmd.args.size() >= 4) {
+                if (cmd.args[2] == "PX") {
+                    try {
+                        expiry_in_ms = std::stoll(cmd.args[3]);
+                    }
+                    catch(...) {
+                        response = encode_error("invalid command usage SET");
+                        enqueue_response(epfd, fd_info, response);
+                        continue;
+                    }
+                } else if (cmd.args[2] == "EX") {
+                    try {
+                        expiry_in_ms = std::stoll(cmd.args[3]) * 1000LL;
+                    }
+                    catch(...) {
+                        response = encode_error("invalid command usage SET");
+                        enqueue_response(epfd, fd_info, response);
+                        continue;
+                    }
+                } else {
+                    response = encode_error("invalid command usage SET");
+                    enqueue_response(epfd, fd_info, response);
+                    continue;
+                }
+                kv_store.set_string(key, value, expiry_in_ms);
+            } else {
+                kv_store.set_string(key, value);
+            }
+            response = encode_simple_string("OK");
+        } else if (cmd.name == "GET") {
+            if(cmd.args.size() < 1) {
+                response = encode_error("invalid command usage GET");
+                enqueue_response(epfd, fd_info, response);
+                continue;
+            }
+            std::string key = std::move(cmd.args[0]);
+            std::optional<std::string> value = kv_store.get_string(key);
+            response = encode_bulk_string(value);
         } else {
-            response = encodeError("unknown command");
+            response = encode_error("unknown command");
         }
         enqueue_response(epfd, fd_info, response);
     }

@@ -131,9 +131,8 @@ RespParseResult parse_array(BufferCursor& cur);
 RespParseResult parse_value(BufferCursor& cur);
 ParseResult<Command> parse_command(BufferCursor& cur);
 
-std::string encodeSimpleString(const std::string& s);
-std::string encodeError(const std::string& msg);
-std::string encodeBulkString(const std::string& s);
-std::string encodeNullBulkString();
+std::string encode_simple_string(const std::string& s);
+std::string encode_error(const std::string& msg);
+std::string encode_bulk_string(const std::optional<std::string>& s);
 
 #endif // RESP_HPP
