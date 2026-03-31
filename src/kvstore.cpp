@@ -23,13 +23,14 @@ void KVStore::set_string(const std::string &key,
 }
 
 std::optional<std::string> KVStore::get_string(const std::string& key) {
-    if (data_.find(key) == data_.end()) {
+    auto it = data_.find(key);
+    if (it == data_.end()) {
         return std::nullopt;
     }
-    RedisObject &obj = data_[key];
+    RedisObject& obj = it->second;
     if (obj.expiry_at_ms.has_value() && now_millis() >= obj.expiry_at_ms.value()) {
-        data_.erase(key);
+        data_.erase(it);
         return std::nullopt;
     }
-    return std::get<std::string>(data_[key].value);
+    return std::get<std::string>(obj.value);
 }

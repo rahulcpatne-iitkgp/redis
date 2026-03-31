@@ -16,8 +16,10 @@
 
 #include "resp.hpp"
 #include "kvstore.hpp"
+#include "command.hpp"
 
 KVStore kv_store;
+CommandRegistry cmd_registry;
 
 static bool set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -109,63 +111,11 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
         conn->in_pos = cursor.position();
 
         std::string response;
-        if (cmd.name == "PING") {
-            response = encode_simple_string("PONG");
-        } else if (cmd.name == "ECHO") {
-            if (!cmd.args.empty()) {
-                response = encode_bulk_string(cmd.args[0]);
-            } else {
-                response = encode_bulk_string(std::nullopt);
-            }
-        } else if (cmd.name == "SET") {
-            if(cmd.args.size() < 2) {
-                response = encode_error("invalid command usage SET");
-                enqueue_response(epfd, fd_info, response);
-                continue;
-            }
-            std::string key = std::move(cmd.args[0]);
-            std::string value = std::move(cmd.args[1]);
-            int64_t expiry_in_ms = 0;
-            if(cmd.args.size() >= 4) {
-                if (cmd.args[2] == "PX") {
-                    try {
-                        expiry_in_ms = std::stoll(cmd.args[3]);
-                    }
-                    catch(...) {
-                        response = encode_error("invalid command usage SET");
-                        enqueue_response(epfd, fd_info, response);
-                        continue;
-                    }
-                } else if (cmd.args[2] == "EX") {
-                    try {
-                        expiry_in_ms = std::stoll(cmd.args[3]) * 1000LL;
-                    }
-                    catch(...) {
-                        response = encode_error("invalid command usage SET");
-                        enqueue_response(epfd, fd_info, response);
-                        continue;
-                    }
-                } else {
-                    response = encode_error("invalid command usage SET");
-                    enqueue_response(epfd, fd_info, response);
-                    continue;
-                }
-                kv_store.set_string(key, value, expiry_in_ms);
-            } else {
-                kv_store.set_string(key, value);
-            }
-            response = encode_simple_string("OK");
-        } else if (cmd.name == "GET") {
-            if(cmd.args.size() < 1) {
-                response = encode_error("invalid command usage GET");
-                enqueue_response(epfd, fd_info, response);
-                continue;
-            }
-            std::string key = std::move(cmd.args[0]);
-            std::optional<std::string> value = kv_store.get_string(key);
-            response = encode_bulk_string(value);
+        auto handler = cmd_registry.get(cmd.name);
+        if (handler.has_value()) {
+            response = (*handler)(cmd, kv_store);
         } else {
-            response = encode_error("unknown command");
+            response = encode_error("ERR unknown command '" + cmd.name + "'");
         }
         enqueue_response(epfd, fd_info, response);
     }
@@ -174,6 +124,12 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
 
 int main(int argc, char **argv)
 {
+    (void)argc;
+    (void)argv;
+
+    // Register all commands
+    commands::register_all(cmd_registry);
+
     // Flush after every std::cout / std::cerr
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;

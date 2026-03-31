@@ -1,3 +1,6 @@
+#ifndef KVSTORE_HPP
+#define KVSTORE_HPP
+
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -29,3 +32,5 @@ private:
 
     static int64_t now_millis();
 };
+
+#endif // KVSTORE_HPP

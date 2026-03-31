@@ -300,3 +300,19 @@ std::string encode_bulk_string(const std::optional<std::string>& s) {
         return "$-1\r\n";
     }
 }
+
+std::string encode_integer(int64_t n) {
+    return ":" + std::to_string(n) + "\r\n";
+}
+
+std::string encode_array(const std::vector<std::string>& items) {
+    std::string result = "*" + std::to_string(items.size()) + "\r\n";
+    for (const auto& item : items) {
+        result += encode_bulk_string(item);
+    }
+    return result;
+}
+
+std::string encode_null_array() {
+    return "*-1\r\n";
+}
