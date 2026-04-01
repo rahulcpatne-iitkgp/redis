@@ -8,10 +8,28 @@ int64_t KVStore::now_millis() {
         .count();
 }
 
-void KVStore::set_string(const std::string &key,
+std::unordered_map<std::string, RedisObject>::iterator KVStore::find(const std::string& key) {
+    auto it = data_.find(key);
+    if(it != data_.end() && it->second.expiry_at_ms.has_value()) {
+        if(now_millis() >= it->second.expiry_at_ms.value()) {
+            data_.erase(it);
+            return data_.end();
+        }
+    }
+    return data_.end();
+}
+
+bool KVStore::set_string(const std::string &key,
                          const std::string &value,
                          std::optional<int64_t> expiry_in_ms) {
-    RedisObject &obj = data_[key];
+    auto it = find(key);
+    if(it != data_.end() && it->second.type != ValueType::String) {
+        return false;
+    }
+    if(it == data_.end()) {
+        it = data_.insert({key, RedisObject{}}).first;
+    }
+    RedisObject &obj = it->second;
     obj.type = ValueType::String;
     obj.value = value;
     
@@ -20,17 +38,29 @@ void KVStore::set_string(const std::string &key,
     } else {
         obj.expiry_at_ms = std::nullopt;
     }
+    return true;
+}
+
+size_t KVStore::push_list(const std::string &key, const std::string &element) {
+    auto it = find(key);
+    if(it != data_.end() && it->second.type != ValueType::List) {
+        return 0;
+    }
+    if(it == data_.end()) {
+        it = data_.insert({key, RedisObject{}}).first;
+        it->second.value = std::vector<std::string>{};
+        it->second.type = ValueType::List;
+    }
+    RedisObject &obj = it->second;
+    auto &v = std::get<std::vector<std::string>>(obj.value);
+    v.push_back(element);
+    return v.size();
 }
 
 std::optional<std::string> KVStore::get_string(const std::string& key) {
-    auto it = data_.find(key);
+    auto it = find(key);
     if (it == data_.end()) {
         return std::nullopt;
     }
-    RedisObject& obj = it->second;
-    if (obj.expiry_at_ms.has_value() && now_millis() >= obj.expiry_at_ms.value()) {
-        data_.erase(it);
-        return std::nullopt;
-    }
-    return std::get<std::string>(obj.value);
+    return std::get<std::string>(it->second.value);
 }

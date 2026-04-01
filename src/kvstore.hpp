@@ -8,7 +8,8 @@
 #include <variant>
 
 enum class ValueType {
-    String
+    String,
+    List
 };
 
 struct RedisObject {
@@ -21,16 +22,18 @@ struct RedisObject {
 
 class KVStore {
 public:
-    void set_string(const std::string& key,
+    bool set_string(const std::string& key,
                     const std::string& value,
                     std::optional<int64_t> expiry_in_ms = std::nullopt);
+    
+    size_t push_list(const std::string& key, const std::string& value);
 
     std::optional<std::string> get_string(const std::string& key);
 
 private:
     std::unordered_map<std::string, RedisObject> data_;
-
     static int64_t now_millis();
+    std::unordered_map<std::string, RedisObject>::iterator find(const std::string& key);
 };
 
 #endif // KVSTORE_HPP
