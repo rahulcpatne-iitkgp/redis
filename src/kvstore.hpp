@@ -26,7 +26,7 @@ public:
                     const std::string& value,
                     std::optional<int64_t> expiry_in_ms = std::nullopt);
     
-    size_t push_list(const std::string& key, const std::string& value);
+    size_t push_list(const std::vector<std::string>& args);
 
     std::optional<std::string> get_string(const std::string& key);
 

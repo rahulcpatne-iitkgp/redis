@@ -98,9 +98,7 @@ namespace commands {
         if(cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
         }
-        const std::string& key = cmd.args[0];
-        const std::string& element = cmd.args[1];
-        size_t size = store.push_list(key, element);
+        size_t size = store.push_list(cmd.args);
         if(size == 0) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }

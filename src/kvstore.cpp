@@ -1,5 +1,6 @@
 #include "kvstore.hpp"
 #include <chrono>
+#include <cassert>
 
 int64_t KVStore::now_millis() {
     using namespace std::chrono;
@@ -44,7 +45,10 @@ bool KVStore::set_string(const std::string &key,
     return true;
 }
 
-size_t KVStore::push_list(const std::string &key, const std::string &element) {
+size_t KVStore::push_list(const std::vector<std::string>& args) {
+    assert(args.size() >= 2);
+    const std::string &key = args[0];
+
     auto it = find(key);
     if(it != data_.end() && it->second.type != ValueType::List) {
         return 0;
@@ -56,7 +60,9 @@ size_t KVStore::push_list(const std::string &key, const std::string &element) {
     }
     RedisObject &obj = it->second;
     auto &v = std::get<std::vector<std::string>>(obj.value);
-    v.push_back(element);
+    for(size_t j = 1; j < args.size(); j++) {
+        v.push_back(args[j]);
+    }
     return v.size();
 }
 
