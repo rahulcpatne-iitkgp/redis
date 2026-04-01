@@ -10,13 +10,16 @@ int64_t KVStore::now_millis() {
 
 std::unordered_map<std::string, RedisObject>::iterator KVStore::find(const std::string& key) {
     auto it = data_.find(key);
-    if(it != data_.end() && it->second.expiry_at_ms.has_value()) {
+    if(it == data_.end()) {
+        return data_.end();
+    }
+    if(it->second.expiry_at_ms.has_value()) {
         if(now_millis() >= it->second.expiry_at_ms.value()) {
             data_.erase(it);
             return data_.end();
         }
     }
-    return data_.end();
+    return it;
 }
 
 bool KVStore::set_string(const std::string &key,
