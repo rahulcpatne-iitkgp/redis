@@ -45,13 +45,21 @@ bool KVStore::set_string(const std::string &key,
     return true;
 }
 
-size_t KVStore::push_list(const std::vector<std::string>& args) {
-    assert(args.size() >= 2);
-    const std::string &key = args[0];
+std::expected<std::string, KVError> KVStore::get_string(const std::string& key) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::unexpected(KVError::NotFound);
+    }
+    if (it->second.type != ValueType::String) {
+        return std::unexpected(KVError::WrongType);
+    }
+    return std::get<std::string>(it->second.value);
+}
 
+std::expected<size_t, KVError> KVStore::push_list(const std::string& key, std::span<const std::string> elements) {
     auto it = find(key);
     if(it != data_.end() && it->second.type != ValueType::List) {
-        return 0;
+        return std::unexpected(KVError::WrongType);
     }
     if(it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
@@ -60,16 +68,30 @@ size_t KVStore::push_list(const std::vector<std::string>& args) {
     }
     RedisObject &obj = it->second;
     auto &v = std::get<std::vector<std::string>>(obj.value);
-    for(size_t j = 1; j < args.size(); j++) {
-        v.push_back(args[j]);
+    for(const auto& elem : elements) {
+        v.push_back(elem);
     }
     return v.size();
 }
 
-std::optional<std::string> KVStore::get_string(const std::string& key) {
+std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::string& key, ssize_t start, ssize_t stop) {
     auto it = find(key);
     if (it == data_.end()) {
-        return std::nullopt;
+        return std::vector<std::string>{};
     }
-    return std::get<std::string>(it->second.value);
+    if (it->second.type != ValueType::List) {
+        return std::unexpected(KVError::WrongType);
+    }
+    
+    auto &v = std::get<std::vector<std::string>>(it->second.value);
+    ssize_t len = static_cast<ssize_t>(v.size());
+    if (start < 0) start = std::max<ssize_t>(0, len + start);
+    if (stop < 0) stop = len + stop;
+    stop = std::min(stop, len - 1);
+    
+    std::vector<std::string> result;
+    for (ssize_t i = start; i <= stop; ++i) {
+        result.push_back(v[i]);
+    }
+    return result;
 }

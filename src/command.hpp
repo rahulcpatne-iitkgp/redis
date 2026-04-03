@@ -28,6 +28,7 @@ namespace commands {
     std::string handle_get(const Command& cmd, KVStore& store);
 
     std::string handle_rpush(const Command& cmd, KVStore& store);
+    std::string handle_lrange(const Command& cmd, KVStore& store);
 
     void register_all(CommandRegistry& registry);
 }

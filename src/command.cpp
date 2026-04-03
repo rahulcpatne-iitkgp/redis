@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <span>
 
 void CommandRegistry::register_command(const std::string& name, CommandHandler handler) {
     handlers_[name] = std::move(handler);
@@ -16,7 +17,7 @@ std::optional<CommandHandler> CommandRegistry::get(const std::string& name) cons
 }
 
 namespace commands {
-    static std::string to_upper(const std::string& s) {
+    static std::string to_upper_str(const std::string& s) {
         std::string out = s;
         std::transform(out.begin(), out.end(), out.begin(),
                     [](unsigned char c) { return std::toupper(c); });
@@ -51,7 +52,7 @@ namespace commands {
         // Parse options: EX seconds | PX milliseconds
         size_t i = 2;
         while (i < cmd.args.size()) {
-            std::string opt = to_upper(cmd.args[i]);
+            std::string opt = to_upper_str(cmd.args[i]);
 
             if (opt == "EX" && i + 1 < cmd.args.size() && !expiry_ms.has_value()) {
                 try {
@@ -90,19 +91,46 @@ namespace commands {
         if (cmd.args.empty()) {
             return encode_error("ERR wrong number of arguments for 'get' command");
         }
-        std::optional<std::string> value = store.get_string(cmd.args[0]);
-        return encode_bulk_string(value);
+        auto result = store.get_string(cmd.args[0]);
+        if (!result) {
+            if (result.error() == KVError::WrongType) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+            }
+            return encode_bulk_string(std::nullopt);
+        }
+        return encode_bulk_string(result.value());
     }
 
     std::string handle_rpush(const Command& cmd, KVStore& store) {
         if(cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
         }
-        size_t size = store.push_list(cmd.args);
-        if(size == 0) {
+        const std::string& key = cmd.args[0];
+        std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
+        auto result = store.push_list(key, elements);
+        if(!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
-        return encode_integer(size);
+        return encode_integer(result.value());
+    }
+
+    std::string handle_lrange(const Command& cmd, KVStore& store) {
+        if (cmd.args.size() < 3) {
+            return encode_error("ERR wrong number of arguments for 'lrange' command");
+        }
+        const std::string& key = cmd.args[0];
+        ssize_t start, stop;
+        try {
+            start = std::stoll(cmd.args[1]);
+            stop = std::stoll(cmd.args[2]);
+        } catch (...) {
+            return encode_error("ERR value is not an integer or out of range");
+        }
+        auto result = store.slice_list(key, start, stop);
+        if (!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        return encode_array(result.value());
     }
 
     void register_all(CommandRegistry& registry) {
@@ -111,5 +139,6 @@ namespace commands {
         registry.register_command("SET", handle_set);
         registry.register_command("GET", handle_get);
         registry.register_command("RPUSH", handle_rpush);
+        registry.register_command("LRANGE", handle_lrange);
     }
 } // namespace commands
