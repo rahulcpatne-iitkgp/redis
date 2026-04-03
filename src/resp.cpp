@@ -294,7 +294,7 @@ std::string encode_error(const std::string& msg) {
 }
 
 std::string encode_bulk_string(const std::optional<std::string>& s) {
-    if(s.has_value()) {
+    if (s.has_value()) {
         return "$" + std::to_string((*s).size()) + "\r\n" + *s + "\r\n";
     } else {
         return "$-1\r\n";

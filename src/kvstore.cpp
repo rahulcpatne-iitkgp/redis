@@ -11,11 +11,11 @@ int64_t KVStore::now_millis() {
 
 std::unordered_map<std::string, RedisObject>::iterator KVStore::find(const std::string& key) {
     auto it = data_.find(key);
-    if(it == data_.end()) {
+    if (it == data_.end()) {
         return data_.end();
     }
-    if(it->second.expiry_at_ms.has_value()) {
-        if(now_millis() >= it->second.expiry_at_ms.value()) {
+    if (it->second.expiry_at_ms.has_value()) {
+        if (now_millis() >= it->second.expiry_at_ms.value()) {
             data_.erase(it);
             return data_.end();
         }
@@ -27,17 +27,17 @@ bool KVStore::set_string(const std::string &key,
                          const std::string &value,
                          std::optional<int64_t> expiry_in_ms) {
     auto it = find(key);
-    if(it != data_.end() && it->second.type != ValueType::String) {
+    if (it != data_.end() && it->second.type != ValueType::String) {
         return false;
     }
-    if(it == data_.end()) {
+    if (it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
     }
     RedisObject &obj = it->second;
     obj.type = ValueType::String;
     obj.value = value;
     
-    if(expiry_in_ms.has_value()) {
+    if (expiry_in_ms.has_value()) {
         obj.expiry_at_ms = now_millis() + expiry_in_ms.value();
     } else {
         obj.expiry_at_ms = std::nullopt;
@@ -58,10 +58,10 @@ std::expected<std::string, KVError> KVStore::get_string(const std::string& key) 
 
 std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::span<const std::string> elements) {
     auto it = find(key);
-    if(it != data_.end() && it->second.type != ValueType::List) {
+    if (it != data_.end() && it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
-    if(it == data_.end()) {
+    if (it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
         it->second.value = std::deque<std::string>{};
         it->second.type = ValueType::List;
@@ -76,10 +76,10 @@ std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::
 
 std::expected<size_t, KVError> KVStore::lpush_list(const std::string& key, std::span<const std::string> elements) {
     auto it = find(key);
-    if(it != data_.end() && it->second.type != ValueType::List) {
+    if (it != data_.end() && it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
-    if(it == data_.end()) {
+    if (it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
         it->second.value = std::deque<std::string>{};
         it->second.type = ValueType::List;
@@ -115,4 +115,16 @@ std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::
         result.push_back(dq[i]);
     }
     return result;
+}
+
+std::expected<size_t, KVError> KVStore::size_list(const std::string& key) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::unexpected(KVError::NotFound);
+    }
+    if (it->second.type != ValueType::List) {
+        return std::unexpected(KVError::WrongType);
+    }
+    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    return dq.size();
 }

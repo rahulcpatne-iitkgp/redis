@@ -81,7 +81,7 @@ namespace commands {
             }
         }
 
-        if(!store.set_string(key, value, expiry_ms)) {
+        if (!store.set_string(key, value, expiry_ms)) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
         return encode_simple_string("OK");
@@ -102,26 +102,26 @@ namespace commands {
     }
 
     std::string handle_rpush(const Command& cmd, KVStore& store) {
-        if(cmd.args.size() < 2) {
+        if (cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
         }
         const std::string& key = cmd.args[0];
         std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
         auto result = store.rpush_list(key, elements);
-        if(!result) {
+        if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
         return encode_integer(result.value());
     }
 
     std::string handle_lpush(const Command& cmd, KVStore& store) {
-        if(cmd.args.size() < 2) {
+        if (cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
         }
         const std::string& key = cmd.args[0];
         std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
         auto result = store.lpush_list(key, elements);
-        if(!result) {
+        if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
         return encode_integer(result.value());
@@ -146,6 +146,21 @@ namespace commands {
         return encode_array(result.value());
     }
 
+    std::string handle_llen(const Command& cmd, KVStore& store) {
+        if (cmd.args.empty()) {
+            return encode_error("ERR wrong number of arguments for 'lrange' command");
+        }
+        const std::string& key = cmd.args[0];
+        auto result = store.size_list(key);
+        if (!result) {
+            if (result.error() == KVError::WrongType) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+            }
+            return encode_integer(0);
+        }
+        return encode_integer(result.value());
+    }
+
     void register_all(CommandRegistry& registry) {
         registry.register_command("PING", handle_ping);
         registry.register_command("ECHO", handle_echo);
@@ -154,5 +169,6 @@ namespace commands {
         registry.register_command("RPUSH", handle_rpush);
         registry.register_command("LPUSH", handle_lpush);
         registry.register_command("LRANGE", handle_lrange);
+        registry.register_command("LLEN", handle_llen);
     }
 } // namespace commands

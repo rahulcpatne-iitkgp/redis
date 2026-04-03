@@ -254,13 +254,13 @@ int main(int argc, char **argv)
                 }
                 if (keep_alive) parse_and_handle(epfd, fd_info);
             }
-            if(keep_alive && (ev & EPOLLOUT)) {
+            if (keep_alive && (ev & EPOLLOUT)) {
                 while(conn->out_pos != conn->outbuf.size()) {
                     char *data = conn->outbuf.data() + conn->out_pos;
                     size_t len = conn->outbuf.size() - conn->out_pos;
                     ssize_t n = send(conn->fd, data, len, 0);
-                    if(n <= 0) {
-                        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+                    if (n <= 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
                             break;
                         }
                         keep_alive = false;
@@ -268,17 +268,17 @@ int main(int argc, char **argv)
                     }
                     conn->out_pos += n;
                 }
-                if(conn->out_pos == conn->outbuf.size()) {
+                if (conn->out_pos == conn->outbuf.size()) {
                     conn->outbuf.clear();
                     conn->out_pos = 0;
-                    if(conn->to_close) {
+                    if (conn->to_close) {
                         keep_alive = false;
                     }
                 } else {
                     compact_outbuf(conn);
                 }
             }
-            if(!keep_alive) {
+            if (!keep_alive) {
                 close_connection(epfd, fd_info);
                 continue;
             }
