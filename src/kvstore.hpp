@@ -38,6 +38,8 @@ public:
                     
     std::expected<size_t, KVError> rpush_list(const std::string& key, std::span<const std::string> elements);
     std::expected<size_t, KVError> lpush_list(const std::string& key, std::span<const std::string> elements);
+    std::expected<std::vector<std::string>, KVError> lpop_list(const std::string& key, size_t n_elem = 1);
+    std::expected<std::vector<std::string>, KVError> rpop_list(const std::string& key, size_t n_elem = 1);
     std::expected<std::vector<std::string>, KVError> slice_list(const std::string& key, ssize_t start, ssize_t stop);
     std::expected<size_t, KVError> size_list(const std::string& key);
 

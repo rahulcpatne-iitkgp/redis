@@ -69,7 +69,7 @@ std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::
     RedisObject &obj = it->second;
     auto &dq = std::get<std::deque<std::string>>(obj.value);
     for(const auto& elem : elements) {
-        dq.push_back(elem);
+        dq.emplace_back(elem);
     }
     return dq.size();
 }
@@ -92,6 +92,45 @@ std::expected<size_t, KVError> KVStore::lpush_list(const std::string& key, std::
     return dq.size();
 }
 
+std::expected<std::vector<std::string>, KVError> KVStore::lpop_list(const std::string& key, size_t n_elem) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::vector<std::string>{};
+    }
+    if (it->second.type != ValueType::List) {
+        return std::unexpected(KVError::WrongType);
+    }
+    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    n_elem = std::min(n_elem, dq.size());
+    std::vector<std::string> result;
+    result.reserve(n_elem);
+    for(size_t i = 0; i < n_elem; i++) {
+        result.emplace_back(std::move(dq.front()));
+        dq.pop_front();
+    }
+    return result;
+}
+
+std::expected<std::vector<std::string>, KVError> KVStore::rpop_list(const std::string& key, size_t n_elem) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::vector<std::string>{};
+    }
+    if (it->second.type != ValueType::List) {
+        return std::unexpected(KVError::WrongType);
+    }
+    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    n_elem = std::min(n_elem, dq.size());
+    std::vector<std::string> result;
+    result.reserve(n_elem);
+    for(size_t i = 0; i < n_elem; i++) {
+        result.emplace_back(std::move(dq.back()));
+        dq.pop_back();
+    }
+    return result;
+}
+
+
 std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::string& key, ssize_t start, ssize_t stop) {
     auto it = find(key);
     if (it == data_.end()) {
@@ -112,7 +151,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::
         result.reserve(stop-start+1);
     }
     for (ssize_t i = start; i <= stop; ++i) {
-        result.push_back(dq[i]);
+        result.emplace_back(dq[i]);
     }
     return result;
 }

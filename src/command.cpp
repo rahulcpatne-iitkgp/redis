@@ -127,6 +127,46 @@ namespace commands {
         return encode_integer(result.value());
     }
 
+    std::string handle_lpop(const Command& cmd, KVStore& store) {
+        if (cmd.args.empty()) {
+            return encode_error("ERR wrong number of arguments for 'lpop' command");
+        }
+        const std::string& key = cmd.args[0];
+        size_t count = 1;
+        if (cmd.args.size() >= 2) {
+            try {
+                count = std::stoull(cmd.args[1]);
+            } catch (...) {
+                return encode_error("ERR value is not an integer or out of range");
+            }
+        }
+        auto result = store.lpop_list(key, count);
+        if (!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        return encode_array(result.value());
+    }
+
+    std::string handle_rpop(const Command& cmd, KVStore& store) {
+        if (cmd.args.empty()) {
+            return encode_error("ERR wrong number of arguments for 'lpop' command");
+        }
+        const std::string& key = cmd.args[0];
+        size_t count = 1;
+        if (cmd.args.size() >= 2) {
+            try {
+                count = std::stoull(cmd.args[1]);
+            } catch (...) {
+                return encode_error("ERR value is not an integer or out of range");
+            }
+        }
+        auto result = store.rpop_list(key, count);
+        if (!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        return encode_array(result.value());
+    }
+
     std::string handle_lrange(const Command& cmd, KVStore& store) {
         if (cmd.args.size() < 3) {
             return encode_error("ERR wrong number of arguments for 'lrange' command");
@@ -168,6 +208,8 @@ namespace commands {
         registry.register_command("GET", handle_get);
         registry.register_command("RPUSH", handle_rpush);
         registry.register_command("LPUSH", handle_lpush);
+        registry.register_command("LPOP", handle_lpop);
+        registry.register_command("RPOP", handle_rpop);
         registry.register_command("LRANGE", handle_lrange);
         registry.register_command("LLEN", handle_llen);
     }

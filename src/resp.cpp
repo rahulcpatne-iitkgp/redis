@@ -201,7 +201,7 @@ RespParseResult parse_array(BufferCursor& cur) {
             return ParseError{"Failed to parse array item: " + item_result.unwrap_error().message};
         }
 
-        items.push_back(std::move(item_result.unwrap()));
+        items.emplace_back(std::move(item_result.unwrap()));
     }
 
     value->data = Array{std::move(items)};
@@ -279,7 +279,7 @@ ParseResult<Command> parse_command(BufferCursor& cur) {
             return ParseResult<Command>(ParseError{"Command arguments cannot be null"});
         }
 
-        cmd.args.push_back(std::move(*arg_bs.data));
+        cmd.args.emplace_back(std::move(*arg_bs.data));
     }
 
     return cmd;

@@ -29,6 +29,8 @@ namespace commands {
 
     std::string handle_rpush(const Command& cmd, KVStore& store);
     std::string handle_lpush(const Command& cmd, KVStore& store);
+    std::string handle_lpop(const Command& cmd, KVStore& store);
+    std::string handle_rpop(const Command& cmd, KVStore& store);
     std::string handle_lrange(const Command& cmd, KVStore& store);
     std::string handle_llen(const Command& cmd, KVStore& store);
 
