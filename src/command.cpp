@@ -107,7 +107,20 @@ namespace commands {
         }
         const std::string& key = cmd.args[0];
         std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
-        auto result = store.push_list(key, elements);
+        auto result = store.rpush_list(key, elements);
+        if(!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        return encode_integer(result.value());
+    }
+
+    std::string handle_lpush(const Command& cmd, KVStore& store) {
+        if(cmd.args.size() < 2) {
+            return encode_error("ERR wrong number of arguments for 'rpush' command");
+        }
+        const std::string& key = cmd.args[0];
+        std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
+        auto result = store.lpush_list(key, elements);
         if(!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
@@ -139,6 +152,7 @@ namespace commands {
         registry.register_command("SET", handle_set);
         registry.register_command("GET", handle_get);
         registry.register_command("RPUSH", handle_rpush);
+        registry.register_command("LPUSH", handle_lpush);
         registry.register_command("LRANGE", handle_lrange);
     }
 } // namespace commands

@@ -56,22 +56,40 @@ std::expected<std::string, KVError> KVStore::get_string(const std::string& key) 
     return std::get<std::string>(it->second.value);
 }
 
-std::expected<size_t, KVError> KVStore::push_list(const std::string& key, std::span<const std::string> elements) {
+std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::span<const std::string> elements) {
     auto it = find(key);
     if(it != data_.end() && it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
     if(it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
-        it->second.value = std::vector<std::string>{};
+        it->second.value = std::deque<std::string>{};
         it->second.type = ValueType::List;
     }
     RedisObject &obj = it->second;
-    auto &v = std::get<std::vector<std::string>>(obj.value);
+    auto &dq = std::get<std::deque<std::string>>(obj.value);
     for(const auto& elem : elements) {
-        v.push_back(elem);
+        dq.push_back(elem);
     }
-    return v.size();
+    return dq.size();
+}
+
+std::expected<size_t, KVError> KVStore::lpush_list(const std::string& key, std::span<const std::string> elements) {
+    auto it = find(key);
+    if(it != data_.end() && it->second.type != ValueType::List) {
+        return std::unexpected(KVError::WrongType);
+    }
+    if(it == data_.end()) {
+        it = data_.insert({key, RedisObject{}}).first;
+        it->second.value = std::deque<std::string>{};
+        it->second.type = ValueType::List;
+    }
+    RedisObject &obj = it->second;
+    auto &dq = std::get<std::deque<std::string>>(obj.value);
+    for(const auto& elem : elements) {
+        dq.push_front(elem);
+    }
+    return dq.size();
 }
 
 std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::string& key, ssize_t start, ssize_t stop) {
@@ -83,15 +101,18 @@ std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::
         return std::unexpected(KVError::WrongType);
     }
     
-    auto &v = std::get<std::vector<std::string>>(it->second.value);
-    ssize_t len = static_cast<ssize_t>(v.size());
+    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    ssize_t len = static_cast<ssize_t>(dq.size());
     if (start < 0) start = std::max<ssize_t>(0, len + start);
     if (stop < 0) stop = len + stop;
     stop = std::min(stop, len - 1);
     
     std::vector<std::string> result;
+    if (start <= stop) {
+        result.reserve(stop-start+1);
+    }
     for (ssize_t i = start; i <= stop; ++i) {
-        result.push_back(v[i]);
+        result.push_back(dq[i]);
     }
     return result;
 }

@@ -8,6 +8,7 @@
 #include <optional>
 #include <expected>
 #include <variant>
+#include <deque>
 
 enum class KVError {
     NotFound,
@@ -22,7 +23,7 @@ enum class ValueType {
 struct RedisObject {
     ValueType type = ValueType::String;
 
-    std::variant<std::string, std::vector<std::string>> value;
+    std::variant<std::string, std::deque<std::string>> value;
 
     std::optional<int64_t> expiry_at_ms = std::nullopt;
 };
@@ -35,7 +36,8 @@ public:
     std::expected<std::string, KVError> get_string(const std::string& key);
     
                     
-    std::expected<size_t, KVError> push_list(const std::string& key, std::span<const std::string> elements);
+    std::expected<size_t, KVError> rpush_list(const std::string& key, std::span<const std::string> elements);
+    std::expected<size_t, KVError> lpush_list(const std::string& key, std::span<const std::string> elements);
     std::expected<std::vector<std::string>, KVError> slice_list(const std::string& key, ssize_t start, ssize_t stop);
 
 private:
