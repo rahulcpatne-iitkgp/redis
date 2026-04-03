@@ -132,39 +132,54 @@ namespace commands {
             return encode_error("ERR wrong number of arguments for 'lpop' command");
         }
         const std::string& key = cmd.args[0];
-        size_t count = 1;
         if (cmd.args.size() >= 2) {
+            size_t count;
             try {
                 count = std::stoull(cmd.args[1]);
             } catch (...) {
                 return encode_error("ERR value is not an integer or out of range");
+            }        
+            auto result = store.lpop_list(key, count);
+            if (!result) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
             }
+            return encode_array(result.value());
         }
-        auto result = store.lpop_list(key, count);
+        auto result = store.lpop_list(key);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
-        return encode_array(result.value());
+        if (result.value().empty()) {
+            return encode_bulk_string(std::nullopt);
+        }
+        return encode_bulk_string(result.value().front());
     }
-
     std::string handle_rpop(const Command& cmd, KVStore& store) {
         if (cmd.args.empty()) {
             return encode_error("ERR wrong number of arguments for 'lpop' command");
         }
         const std::string& key = cmd.args[0];
-        size_t count = 1;
         if (cmd.args.size() >= 2) {
+            size_t count;
             try {
                 count = std::stoull(cmd.args[1]);
             } catch (...) {
                 return encode_error("ERR value is not an integer or out of range");
+            }        
+            auto result = store.rpop_list(key, count);
+            if (!result) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
             }
+            return encode_array(result.value());
         }
-        auto result = store.rpop_list(key, count);
+        auto result = store.rpop_list(key);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
-        return encode_array(result.value());
+        if (result.value().empty()) {
+            return encode_bulk_string(std::nullopt);
+        }
+        return encode_bulk_string(result.value().front());
     }
 
     std::string handle_lrange(const Command& cmd, KVStore& store) {
