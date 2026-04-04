@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <span>
+#include <chrono>
+#include <cmath>
 
 void CommandRegistry::register_command(const std::string& name, CommandHandler handler) {
     handlers_[name] = std::move(handler);
@@ -231,14 +233,14 @@ namespace commands {
         }
         
         const std::string& key = cmd.args[0];
-        int64_t timeout_seconds;
+        double timeout_seconds;
         try {
-            timeout_seconds = std::stoll(cmd.args[1]);
+            timeout_seconds = std::stod(cmd.args[1]);
             if (timeout_seconds < 0) {
                 return encode_error("ERR timeout is negative");
             }
         } catch (...) {
-            return encode_error("ERR timeout is not an integer or out of range");
+            return encode_error("ERR timeout is invalid");
         }
         
         // Check if list already has elements
@@ -253,7 +255,10 @@ namespace commands {
         }
         
         // List is empty, block and wait
-        int64_t timeout_ms = (timeout_seconds == 0) ? 0 : timeout_seconds * 1000;
+        using namespace std::chrono;
+        int64_t timeout_ms = timeout_seconds == 0.0
+            ? 0
+            : static_cast<int64_t>(std::ceil(timeout_seconds * 1000.0));
         ctx.block_on_key(key, timeout_ms);
         return "";  // Deferred response
     }

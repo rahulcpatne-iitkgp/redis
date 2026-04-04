@@ -305,9 +305,13 @@ std::string encode_integer(int64_t n) {
     return ":" + std::to_string(n) + "\r\n";
 }
 
-std::string encode_array(const std::vector<std::string>& items) {
-    std::string result = "*" + std::to_string(items.size()) + "\r\n";
-    for (const auto& item : items) {
+std::string encode_array(const std::optional<std::vector<std::string>>& items) {
+    if(!items) {
+        return "*-1\r\n";
+    }
+    const std::vector<std::string>& v = items.value();
+    std::string result = "*" + std::to_string(v.size()) + "\r\n";
+    for (const auto& item : v) {
         result += encode_bulk_string(item);
     }
     return result;

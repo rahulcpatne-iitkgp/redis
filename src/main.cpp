@@ -204,12 +204,6 @@ static void compact_outbuf(Connection* conn) {
     }
 }
 
-// Helper to make BLPOP response array
-static std::string make_blpop_response(const std::string& key, const std::string& value) {
-    std::vector<std::string> arr = {key, value};
-    return encode_array(arr);
-}
-
 static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
     Connection *conn = fd_info->conn;
     BufferCursor cursor(conn->inbuf, conn->in_pos);
@@ -232,7 +226,7 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
         // Create context with callbacks
         CommandContext ctx{
             .store = kv_store,
-            .block_on_key = [epfd, fd_info](const std::string& key, int64_t timeout_ms) {
+            .block_on_key = [fd_info](const std::string& key, int64_t timeout_ms) {
                 auto* waiter = blocking_registry.add_waiter(key, timeout_ms, fd_info);
                 fd_info->conn->active_waiter = waiter;
             },
@@ -245,7 +239,7 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
                     }
                     
                     // Send response to waiting client
-                    std::string response = make_blpop_response(key, result.value().front());
+                    std::string response = encode_array(std::vector<std::string>{key, result.value().front()});
                     enqueue_response(epfd, waiter->fd_info, response);
                     
                     // Clean up waiter
@@ -353,7 +347,7 @@ int main(int argc, char **argv)
         auto expired = blocking_registry.get_expired_waiters();
         for (auto* waiter : expired) {
             // Send nil response for timeout
-            std::string response = encode_bulk_string(std::nullopt);
+            std::string response = encode_array(std::nullopt);
             enqueue_response(epfd, waiter->fd_info, response);
             waiter->fd_info->conn->active_waiter = nullptr;
             blocking_registry.remove_waiter(waiter);
