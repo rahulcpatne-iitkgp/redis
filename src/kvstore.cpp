@@ -68,7 +68,7 @@ std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::
     }
     RedisObject &obj = it->second;
     auto &dq = std::get<std::deque<std::string>>(obj.value);
-    for(const auto& elem : elements) {
+    for (const auto& elem : elements) {
         dq.emplace_back(elem);
     }
     return dq.size();
@@ -86,7 +86,7 @@ std::expected<size_t, KVError> KVStore::lpush_list(const std::string& key, std::
     }
     RedisObject &obj = it->second;
     auto &dq = std::get<std::deque<std::string>>(obj.value);
-    for(const auto& elem : elements) {
+    for (const auto& elem : elements) {
         dq.push_front(elem);
     }
     return dq.size();
@@ -104,7 +104,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::lpop_list(const std::s
     n_elem = std::min(n_elem, dq.size());
     std::vector<std::string> result;
     result.reserve(n_elem);
-    for(size_t i = 0; i < n_elem; i++) {
+    for (size_t i = 0; i < n_elem; i++) {
         result.emplace_back(std::move(dq.front()));
         dq.pop_front();
     }
@@ -123,7 +123,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::rpop_list(const std::s
     n_elem = std::min(n_elem, dq.size());
     std::vector<std::string> result;
     result.reserve(n_elem);
-    for(size_t i = 0; i < n_elem; i++) {
+    for (size_t i = 0; i < n_elem; i++) {
         result.emplace_back(std::move(dq.back()));
         dq.pop_back();
     }

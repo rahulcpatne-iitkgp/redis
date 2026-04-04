@@ -24,23 +24,23 @@ namespace commands {
         return out;
     }
 
-    std::string handle_ping(const Command& cmd, KVStore& store) {
-        (void)store;
+    std::string handle_ping(const Command& cmd, CommandContext& ctx) {
+        (void)ctx;
         if (!cmd.args.empty()) {
             return encode_bulk_string(cmd.args[0]);
         }
         return encode_simple_string("PONG");
     }
 
-    std::string handle_echo(const Command& cmd, KVStore& store) {
-        (void)store;
+    std::string handle_echo(const Command& cmd, CommandContext& ctx) {
+        (void)ctx;
         if (cmd.args.empty()) {
             return encode_error("ERR wrong number of arguments for 'echo' command");
         }
         return encode_bulk_string(cmd.args[0]);
     }
 
-    std::string handle_set(const Command& cmd, KVStore& store) {
+    std::string handle_set(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'set' command");
         }
@@ -81,17 +81,17 @@ namespace commands {
             }
         }
 
-        if (!store.set_string(key, value, expiry_ms)) {
+        if (!ctx.store.set_string(key, value, expiry_ms)) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
         return encode_simple_string("OK");
     }
 
-    std::string handle_get(const Command& cmd, KVStore& store) {
+    std::string handle_get(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.empty()) {
             return encode_error("ERR wrong number of arguments for 'get' command");
         }
-        auto result = store.get_string(cmd.args[0]);
+        auto result = ctx.store.get_string(cmd.args[0]);
         if (!result) {
             if (result.error() == KVError::WrongType) {
                 return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
@@ -101,33 +101,41 @@ namespace commands {
         return encode_bulk_string(result.value());
     }
 
-    std::string handle_rpush(const Command& cmd, KVStore& store) {
+    std::string handle_rpush(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
         }
         const std::string& key = cmd.args[0];
         std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
-        auto result = store.rpush_list(key, elements);
+        auto result = ctx.store.rpush_list(key, elements);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
+        
+        // Notify any waiting BLPOP clients
+        ctx.notify_key(key);
+        
         return encode_integer(result.value());
     }
 
-    std::string handle_lpush(const Command& cmd, KVStore& store) {
+    std::string handle_lpush(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.size() < 2) {
-            return encode_error("ERR wrong number of arguments for 'rpush' command");
+            return encode_error("ERR wrong number of arguments for 'lpush' command");
         }
         const std::string& key = cmd.args[0];
         std::span<const std::string> elements(cmd.args.data() + 1, cmd.args.size() - 1);
-        auto result = store.lpush_list(key, elements);
+        auto result = ctx.store.lpush_list(key, elements);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
+        
+        // Notify any waiting BLPOP clients
+        ctx.notify_key(key);
+        
         return encode_integer(result.value());
     }
 
-    std::string handle_lpop(const Command& cmd, KVStore& store) {
+    std::string handle_lpop(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.empty()) {
             return encode_error("ERR wrong number of arguments for 'lpop' command");
         }
@@ -139,40 +147,13 @@ namespace commands {
             } catch (...) {
                 return encode_error("ERR value is not an integer or out of range");
             }        
-            auto result = store.lpop_list(key, count);
+            auto result = ctx.store.lpop_list(key, count);
             if (!result) {
                 return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
             }
             return encode_array(result.value());
         }
-        auto result = store.lpop_list(key);
-        if (!result) {
-            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
-        }
-        if (result.value().empty()) {
-            return encode_bulk_string(std::nullopt);
-        }
-        return encode_bulk_string(result.value().front());
-    }
-    std::string handle_rpop(const Command& cmd, KVStore& store) {
-        if (cmd.args.empty()) {
-            return encode_error("ERR wrong number of arguments for 'lpop' command");
-        }
-        const std::string& key = cmd.args[0];
-        if (cmd.args.size() >= 2) {
-            size_t count;
-            try {
-                count = std::stoull(cmd.args[1]);
-            } catch (...) {
-                return encode_error("ERR value is not an integer or out of range");
-            }        
-            auto result = store.rpop_list(key, count);
-            if (!result) {
-                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
-            }
-            return encode_array(result.value());
-        }
-        auto result = store.rpop_list(key);
+        auto result = ctx.store.lpop_list(key);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
@@ -182,7 +163,35 @@ namespace commands {
         return encode_bulk_string(result.value().front());
     }
 
-    std::string handle_lrange(const Command& cmd, KVStore& store) {
+    std::string handle_rpop(const Command& cmd, CommandContext& ctx) {
+        if (cmd.args.empty()) {
+            return encode_error("ERR wrong number of arguments for 'rpop' command");
+        }
+        const std::string& key = cmd.args[0];
+        if (cmd.args.size() >= 2) {
+            size_t count;
+            try {
+                count = std::stoull(cmd.args[1]);
+            } catch (...) {
+                return encode_error("ERR value is not an integer or out of range");
+            }        
+            auto result = ctx.store.rpop_list(key, count);
+            if (!result) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+            }
+            return encode_array(result.value());
+        }
+        auto result = ctx.store.rpop_list(key);
+        if (!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        if (result.value().empty()) {
+            return encode_bulk_string(std::nullopt);
+        }
+        return encode_bulk_string(result.value().front());
+    }
+
+    std::string handle_lrange(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.size() < 3) {
             return encode_error("ERR wrong number of arguments for 'lrange' command");
         }
@@ -194,19 +203,19 @@ namespace commands {
         } catch (...) {
             return encode_error("ERR value is not an integer or out of range");
         }
-        auto result = store.slice_list(key, start, stop);
+        auto result = ctx.store.slice_list(key, start, stop);
         if (!result) {
             return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
         }
         return encode_array(result.value());
     }
 
-    std::string handle_llen(const Command& cmd, KVStore& store) {
+    std::string handle_llen(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.empty()) {
-            return encode_error("ERR wrong number of arguments for 'lrange' command");
+            return encode_error("ERR wrong number of arguments for 'llen' command");
         }
         const std::string& key = cmd.args[0];
-        auto result = store.size_list(key);
+        auto result = ctx.store.size_list(key);
         if (!result) {
             if (result.error() == KVError::WrongType) {
                 return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
@@ -214,6 +223,39 @@ namespace commands {
             return encode_integer(0);
         }
         return encode_integer(result.value());
+    }
+
+    std::string handle_blpop(const Command& cmd, CommandContext& ctx) {
+        if (cmd.args.size() < 2) {
+            return encode_error("ERR wrong number of arguments for 'blpop' command");
+        }
+        
+        const std::string& key = cmd.args[0];
+        int64_t timeout_seconds;
+        try {
+            timeout_seconds = std::stoll(cmd.args[1]);
+            if (timeout_seconds < 0) {
+                return encode_error("ERR timeout is negative");
+            }
+        } catch (...) {
+            return encode_error("ERR timeout is not an integer or out of range");
+        }
+        
+        // Check if list already has elements
+        auto result = ctx.store.lpop_list(key);
+        if (!result) {
+            return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        }
+        if (!result.value().empty()) {
+            // Return [key, value] array
+            std::vector<std::string> arr = {key, result.value().front()};
+            return encode_array(arr);
+        }
+        
+        // List is empty, block and wait
+        int64_t timeout_ms = (timeout_seconds == 0) ? 0 : timeout_seconds * 1000;
+        ctx.block_on_key(key, timeout_ms);
+        return "";  // Deferred response
     }
 
     void register_all(CommandRegistry& registry) {
@@ -227,5 +269,6 @@ namespace commands {
         registry.register_command("RPOP", handle_rpop);
         registry.register_command("LRANGE", handle_lrange);
         registry.register_command("LLEN", handle_llen);
+        registry.register_command("BLPOP", handle_blpop);
     }
 } // namespace commands

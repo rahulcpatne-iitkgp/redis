@@ -13,6 +13,9 @@
 #include <string_view>
 #include <sys/epoll.h>
 #include <fcntl.h>
+#include <unordered_map>
+#include <list>
+#include <chrono>
 
 #include "resp.hpp"
 #include "kvstore.hpp"
@@ -20,6 +23,105 @@
 
 KVStore kv_store;
 CommandRegistry cmd_registry;
+
+// Forward declarations
+struct FdInfo_t;
+struct BlockingRequest;
+
+// Blocking command waiter
+struct BlockingRequest {
+    std::string key;
+    int64_t expire_at_ms;  // 0 = no timeout
+    FdInfo_t* fd_info;
+    std::list<BlockingRequest*>::iterator registry_it;  // position in all_requests_
+};
+
+// Registry for blocking waiters
+class BlockingRegistry {
+public:
+    // Register a waiter for a key. Returns pointer to waiter (owned by registry).
+    BlockingRequest* add_waiter(const std::string& key, int64_t timeout_ms, FdInfo_t* fd_info) {
+        auto* waiter = new BlockingRequest{};
+        waiter->key = key;
+        waiter->fd_info = fd_info;
+        if (timeout_ms > 0) {
+            waiter->expire_at_ms = now_millis() + timeout_ms;
+        } else {
+            waiter->expire_at_ms = 0;  // block forever
+        }
+        
+        all_requests_.push_back(waiter);
+        waiter->registry_it = std::prev(all_requests_.end());
+        key_requests_[key].push_back(waiter);
+        return waiter;
+    }
+    
+    // Remove a specific waiter
+    void remove_waiter(BlockingRequest* waiter) {
+        if (!waiter) return;
+        
+        // Remove from key map
+        auto kit = key_requests_.find(waiter->key);
+        if (kit != key_requests_.end()) {
+            kit->second.remove(waiter);
+            if (kit->second.empty()) {
+                key_requests_.erase(kit);
+            }
+        }
+        
+        // Remove from all_waiters list
+        all_requests_.erase(waiter->registry_it);
+        delete waiter;
+    }
+    
+    // Get first waiter for a key (FIFO), or nullptr
+    BlockingRequest* get_waiter_for_key(const std::string& key) {
+        auto it = key_requests_.find(key);
+        if (it == key_requests_.end() || it->second.empty()) {
+            return nullptr;
+        }
+        return it->second.front();
+    }
+    
+    // Get all expired waiters
+    std::vector<BlockingRequest*> get_expired_waiters() {
+        std::vector<BlockingRequest*> expired;
+        int64_t now = now_millis();
+        for (auto* w : all_requests_) {
+            if (w->expire_at_ms > 0 && w->expire_at_ms <= now) {
+                expired.push_back(w);
+            }
+        }
+        return expired;
+    }
+    
+    // Get time until next timeout (for epoll_wait), -1 if none
+    int get_next_timeout_ms() {
+        int64_t now = now_millis();
+        int64_t min_timeout = INT64_MAX;
+        for (auto* w : all_requests_) {
+            if (w->expire_at_ms > 0) {
+                int64_t remaining = w->expire_at_ms - now;
+                if (remaining <= 0) return 0;  // already expired
+                min_timeout = std::min(min_timeout, remaining);
+            }
+        }
+        if (min_timeout == INT64_MAX) return -1;  // no timeouts
+        return static_cast<int>(std::min(min_timeout, (int64_t)INT32_MAX));
+    }
+    
+private:
+    static int64_t now_millis() {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(
+            system_clock::now().time_since_epoch()).count();
+    }
+    
+    std::unordered_map<std::string, std::list<BlockingRequest*>> key_requests_;
+    std::list<BlockingRequest*> all_requests_;
+};
+
+BlockingRegistry blocking_registry;
 
 static bool set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -35,6 +137,7 @@ struct Connection {
     std::string outbuf;
     size_t out_pos = 0;
     bool to_close = false;
+    BlockingRequest* active_waiter = nullptr;  // if blocked on BLPOP
 };
 
 enum class FdType {
@@ -49,6 +152,13 @@ struct FdInfo_t {
 
 static void close_connection(int epfd, FdInfo_t* fd_info) {
     assert(fd_info->type == FdType::Connection);
+    
+    // Clean up any active waiter
+    if (fd_info->conn->active_waiter) {
+        blocking_registry.remove_waiter(fd_info->conn->active_waiter);
+        fd_info->conn->active_waiter = nullptr;
+    }
+    
     int conn_fd = fd_info->conn->fd;
     if (epoll_ctl(epfd, EPOLL_CTL_DEL, conn_fd, nullptr) < 0) {
         std::cerr << "epoll_ctl DEL conn failed: " << strerror(errno) << "\n";
@@ -94,10 +204,19 @@ static void compact_outbuf(Connection* conn) {
     }
 }
 
+// Helper to make BLPOP response array
+static std::string make_blpop_response(const std::string& key, const std::string& value) {
+    std::vector<std::string> arr = {key, value};
+    return encode_array(arr);
+}
+
 static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
     Connection *conn = fd_info->conn;
     BufferCursor cursor(conn->inbuf, conn->in_pos);
     while (true) {
+        // Don't process more commands if connection is blocked
+        if (conn->active_waiter) break;
+        
         auto parse_res = parse_command(cursor);
         if (parse_res.need_more_data()) break;
         if (parse_res.is_error()) {
@@ -110,14 +229,44 @@ static void parse_and_handle(int epfd, FdInfo_t *fd_info) {
         Command cmd = std::move(parse_res.data.value());
         conn->in_pos = cursor.position();
 
+        // Create context with callbacks
+        CommandContext ctx{
+            .store = kv_store,
+            .block_on_key = [epfd, fd_info](const std::string& key, int64_t timeout_ms) {
+                auto* waiter = blocking_registry.add_waiter(key, timeout_ms, fd_info);
+                fd_info->conn->active_waiter = waiter;
+            },
+            .notify_key = [epfd](const std::string& key) {
+                while (auto* waiter = blocking_registry.get_waiter_for_key(key)) {
+                    // Try to pop an element for this waiter
+                    auto result = kv_store.lpop_list(key);
+                    if (!result || result.value().empty()) {
+                        break;  // No more elements
+                    }
+                    
+                    // Send response to waiting client
+                    std::string response = make_blpop_response(key, result.value().front());
+                    enqueue_response(epfd, waiter->fd_info, response);
+                    
+                    // Clean up waiter
+                    waiter->fd_info->conn->active_waiter = nullptr;
+                    blocking_registry.remove_waiter(waiter);
+                }
+            }
+        };
+        
         std::string response;
         auto handler = cmd_registry.get(cmd.name);
         if (handler.has_value()) {
-            response = (*handler)(cmd, kv_store);
+            response = (*handler)(cmd, ctx);
         } else {
             response = encode_error("ERR unknown command '" + cmd.name + "'");
         }
-        enqueue_response(epfd, fd_info, response);
+        
+        // Empty response means deferred (blocking command)
+        if (!response.empty()) {
+            enqueue_response(epfd, fd_info, response);
+        }
     }
     compact_inbuf(conn);
 }
@@ -190,14 +339,27 @@ int main(int argc, char **argv)
     epoll_event events[MAX_EVENTS];
     
     while (true) {
-        ssize_t n = epoll_wait(epfd, events, MAX_EVENTS, -1);
+        // Calculate timeout for BLPOP waiters
+        int timeout_ms = blocking_registry.get_next_timeout_ms();
+        
+        ssize_t n = epoll_wait(epfd, events, MAX_EVENTS, timeout_ms);
         if (n < 0) {
             if (errno == EINTR) continue;
             std::cerr << "epoll_wait failed\n";
             break;
         }
+        
+        // Handle expired BLPOP waiters
+        auto expired = blocking_registry.get_expired_waiters();
+        for (auto* waiter : expired) {
+            // Send nil response for timeout
+            std::string response = encode_bulk_string(std::nullopt);
+            enqueue_response(epfd, waiter->fd_info, response);
+            waiter->fd_info->conn->active_waiter = nullptr;
+            blocking_registry.remove_waiter(waiter);
+        }
 
-        for(int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i++) {
             FdInfo_t* fd_info = static_cast<FdInfo_t*>(events[i].data.ptr);
             uint32_t ev = events[i].events;
             if (fd_info->type == FdType::Listen) {

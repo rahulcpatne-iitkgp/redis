@@ -9,7 +9,19 @@
 #include "kvstore.hpp"
 #include "resp.hpp"
 
-using CommandHandler = std::function<std::string(const Command&, KVStore&)>;
+// CommandContext provides handlers access to store and blocking functionality
+struct CommandContext {
+    KVStore& store;
+    
+    // Callback for BLPOP to register as waiting
+    std::function<void(const std::string& key, int64_t timeout_ms)> block_on_key;
+    
+    // Callback for LPUSH/RPUSH to wake up blocked clients
+    std::function<void(const std::string& key)> notify_key;
+};
+
+// Handler returns response string, or empty string for deferred (blocking) response
+using CommandHandler = std::function<std::string(const Command&, CommandContext&)>;
 
 class CommandRegistry {
 public:
@@ -22,17 +34,19 @@ private:
 
 // Built-in command handlers
 namespace commands {
-    std::string handle_ping(const Command& cmd, KVStore& store);
-    std::string handle_echo(const Command& cmd, KVStore& store);
-    std::string handle_set(const Command& cmd, KVStore& store);
-    std::string handle_get(const Command& cmd, KVStore& store);
+    std::string handle_ping(const Command& cmd, CommandContext& ctx);
+    std::string handle_echo(const Command& cmd, CommandContext& ctx);
+    std::string handle_set(const Command& cmd, CommandContext& ctx);
+    std::string handle_get(const Command& cmd, CommandContext& ctx);
 
-    std::string handle_rpush(const Command& cmd, KVStore& store);
-    std::string handle_lpush(const Command& cmd, KVStore& store);
-    std::string handle_lpop(const Command& cmd, KVStore& store);
-    std::string handle_rpop(const Command& cmd, KVStore& store);
-    std::string handle_lrange(const Command& cmd, KVStore& store);
-    std::string handle_llen(const Command& cmd, KVStore& store);
+    std::string handle_rpush(const Command& cmd, CommandContext& ctx);
+    std::string handle_lpush(const Command& cmd, CommandContext& ctx);
+    std::string handle_lpop(const Command& cmd, CommandContext& ctx);
+    std::string handle_rpop(const Command& cmd, CommandContext& ctx);
+    std::string handle_lrange(const Command& cmd, CommandContext& ctx);
+    std::string handle_llen(const Command& cmd, CommandContext& ctx);
+    
+    std::string handle_blpop(const Command& cmd, CommandContext& ctx);
 
     void register_all(CommandRegistry& registry);
 }
