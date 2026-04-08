@@ -38,6 +38,7 @@ namespace commands {
     std::string handle_echo(const Command& cmd, CommandContext& ctx);
     std::string handle_set(const Command& cmd, CommandContext& ctx);
     std::string handle_get(const Command& cmd, CommandContext& ctx);
+    std::string handle_type(const Command& cmd, CommandContext& ctx);
 
     std::string handle_rpush(const Command& cmd, CommandContext& ctx);
     std::string handle_lpush(const Command& cmd, CommandContext& ctx);

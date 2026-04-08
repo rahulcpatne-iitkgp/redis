@@ -56,6 +56,14 @@ std::expected<std::string, KVError> KVStore::get_string(const std::string& key) 
     return std::get<std::string>(it->second.value);
 }
 
+std::expected<ValueType, KVError> KVStore::type_of_key(const std::string& key) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::unexpected(KVError::NotFound);
+    }
+    return it->second.type;
+}
+
 std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::span<const std::string> elements) {
     auto it = find(key);
     if (it != data_.end() && it->second.type != ValueType::List) {

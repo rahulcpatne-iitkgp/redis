@@ -35,6 +35,7 @@ public:
                     std::optional<int64_t> expiry_in_ms = std::nullopt);
     std::expected<std::string, KVError> get_string(const std::string& key);
     
+    std::expected<ValueType, KVError> type_of_key(const std::string& key);
                     
     std::expected<size_t, KVError> rpush_list(const std::string& key, std::span<const std::string> elements);
     std::expected<size_t, KVError> lpush_list(const std::string& key, std::span<const std::string> elements);

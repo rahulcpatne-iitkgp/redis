@@ -103,6 +103,20 @@ namespace commands {
         return encode_bulk_string(result.value());
     }
 
+    std::string handle_type(const Command& cmd, CommandContext& ctx) {
+        if (cmd.args.empty()) {
+            return encode_error("ERR wrong number of arguments for 'type' command");
+        }
+        auto result = ctx.store.type_of_key(cmd.args[0]);
+        if (!result) {
+            return encode_simple_string("none");
+        } else if (result.value() == ValueType::String) {
+            return encode_simple_string("string");
+        } else {
+            return encode_simple_string("list");
+        }
+    }
+
     std::string handle_rpush(const Command& cmd, CommandContext& ctx) {
         if (cmd.args.size() < 2) {
             return encode_error("ERR wrong number of arguments for 'rpush' command");
@@ -268,6 +282,7 @@ namespace commands {
         registry.register_command("ECHO", handle_echo);
         registry.register_command("SET", handle_set);
         registry.register_command("GET", handle_get);
+        registry.register_command("TYPE", handle_type);
         registry.register_command("RPUSH", handle_rpush);
         registry.register_command("LPUSH", handle_lpush);
         registry.register_command("LPOP", handle_lpop);
