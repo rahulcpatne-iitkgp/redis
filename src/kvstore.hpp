@@ -9,21 +9,53 @@
 #include <expected>
 #include <variant>
 #include <deque>
+#include <cstdint>
 
 enum class KVError {
     NotFound,
-    WrongType
+    WrongType,
+    ZeroStreamId,
+    WrongStreamId
 };
 
 enum class ValueType {
     String,
-    List
+    List,
+    Stream
+};
+
+struct StreamId {
+    uint64_t ms;
+    uint64_t seq;
+
+    bool operator<(const StreamId& other) const {
+        if (ms != other.ms) return ms < other.ms;
+        return seq < other.seq;
+    }
+    bool operator==(const StreamId& other) const {
+        return ms == other.ms && seq == other.seq;
+    }
+    bool operator<=(const StreamId& other) const {
+        return *this < other || *this == other;
+    }
+};
+
+using Fields = std::vector<std::pair<std::string, std::string>>;
+
+struct StreamEntry {
+    StreamId id;
+    Fields fields;
+};
+
+struct Stream {
+    std::deque<StreamEntry> entries;
+    StreamId last_id = {0, 0};
 };
 
 struct RedisObject {
     ValueType type = ValueType::String;
 
-    std::variant<std::string, std::deque<std::string>> value;
+    std::variant<std::string, std::deque<std::string>, Stream> value;
 
     std::optional<int64_t> expiry_at_ms = std::nullopt;
 };
@@ -43,6 +75,9 @@ public:
     std::expected<std::vector<std::string>, KVError> rpop_list(const std::string& key, size_t n_elem = 1);
     std::expected<std::vector<std::string>, KVError> slice_list(const std::string& key, ssize_t start, ssize_t stop);
     std::expected<size_t, KVError> size_list(const std::string& key);
+
+    std::expected<StreamId, KVError> xadd_stream(const std::string& key, const StreamId& id, const Fields& fields);
+    StreamId genid_stream(const std::string& key, std::optional<uint64_t> id_ms, std::optional<uint64_t> id_seq);
 
 private:
     std::unordered_map<std::string, RedisObject> data_;

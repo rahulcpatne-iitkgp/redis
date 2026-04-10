@@ -1,6 +1,7 @@
 #include "kvstore.hpp"
 #include <chrono>
 #include <cassert>
+#include <cstdint>
 
 int64_t KVStore::now_millis() {
     using namespace std::chrono;
@@ -23,8 +24,8 @@ std::unordered_map<std::string, RedisObject>::iterator KVStore::find(const std::
     return it;
 }
 
-bool KVStore::set_string(const std::string &key,
-                         const std::string &value,
+bool KVStore::set_string(const std::string& key,
+                         const std::string& value,
                          std::optional<int64_t> expiry_in_ms) {
     auto it = find(key);
     if (it != data_.end() && it->second.type != ValueType::String) {
@@ -33,7 +34,7 @@ bool KVStore::set_string(const std::string &key,
     if (it == data_.end()) {
         it = data_.insert({key, RedisObject{}}).first;
     }
-    RedisObject &obj = it->second;
+    RedisObject& obj = it->second;
     obj.type = ValueType::String;
     obj.value = value;
     
@@ -74,8 +75,8 @@ std::expected<size_t, KVError> KVStore::rpush_list(const std::string& key, std::
         it->second.value = std::deque<std::string>{};
         it->second.type = ValueType::List;
     }
-    RedisObject &obj = it->second;
-    auto &dq = std::get<std::deque<std::string>>(obj.value);
+    RedisObject& obj = it->second;
+    auto& dq = std::get<std::deque<std::string>>(obj.value);
     for (const auto& elem : elements) {
         dq.emplace_back(elem);
     }
@@ -92,8 +93,8 @@ std::expected<size_t, KVError> KVStore::lpush_list(const std::string& key, std::
         it->second.value = std::deque<std::string>{};
         it->second.type = ValueType::List;
     }
-    RedisObject &obj = it->second;
-    auto &dq = std::get<std::deque<std::string>>(obj.value);
+    RedisObject& obj = it->second;
+    auto& dq = std::get<std::deque<std::string>>(obj.value);
     for (const auto& elem : elements) {
         dq.push_front(elem);
     }
@@ -108,7 +109,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::lpop_list(const std::s
     if (it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
-    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    auto& dq = std::get<std::deque<std::string>>(it->second.value);
     n_elem = std::min(n_elem, dq.size());
     std::vector<std::string> result;
     result.reserve(n_elem);
@@ -127,7 +128,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::rpop_list(const std::s
     if (it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
-    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    auto& dq = std::get<std::deque<std::string>>(it->second.value);
     n_elem = std::min(n_elem, dq.size());
     std::vector<std::string> result;
     result.reserve(n_elem);
@@ -148,7 +149,7 @@ std::expected<std::vector<std::string>, KVError> KVStore::slice_list(const std::
         return std::unexpected(KVError::WrongType);
     }
     
-    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    auto& dq = std::get<std::deque<std::string>>(it->second.value);
     ssize_t len = static_cast<ssize_t>(dq.size());
     if (start < 0) start = std::max<ssize_t>(0, len + start);
     if (stop < 0) stop = len + stop;
@@ -172,6 +173,53 @@ std::expected<size_t, KVError> KVStore::size_list(const std::string& key) {
     if (it->second.type != ValueType::List) {
         return std::unexpected(KVError::WrongType);
     }
-    auto &dq = std::get<std::deque<std::string>>(it->second.value);
+    auto& dq = std::get<std::deque<std::string>>(it->second.value);
     return dq.size();
+}
+
+StreamId KVStore::genid_stream(const std::string& key, std::optional<uint64_t> id_ms, std::optional<uint64_t> id_seq) {
+    StreamId result;
+    if (id_ms.has_value()) {
+        result.ms = id_ms.value();
+        if (id_seq.has_value()) {
+            result.seq = id_seq.value();
+            return result;
+        }
+    } else {
+        result.ms = now_millis();
+    }
+    auto it = find(key);
+    if (it == data_.end()) {
+        result.seq = 0;
+    } else {
+        if (it->second.type != ValueType::Stream) return StreamId{0,0}; // erroneous id
+        auto& stream = std::get<Stream>(it->second.value);
+        result.seq = (stream.last_id.ms == result.ms) ? (stream.last_id.seq+1) : 0;
+    }
+    return result;
+}
+
+std::expected<StreamId, KVError> KVStore::xadd_stream(const std::string& key, const StreamId& id, const Fields& fields) {
+    auto it = find(key);
+    if (it != data_.end() && it->second.type != ValueType::Stream) {
+        return std::unexpected(KVError::WrongType);
+    }
+    if (id == StreamId{0, 0}) {
+        return std::unexpected(KVError::ZeroStreamId);
+    }
+
+    if (it == data_.end()) {
+        it = data_.emplace(key, RedisObject{}).first;
+        it->second.type = ValueType::Stream;
+        it->second.value = Stream{}; // constructs last_id 0,0
+    }
+
+    auto& stream = std::get<Stream>(it->second.value);
+    if (id <= stream.last_id) {
+        return std::unexpected(KVError::WrongStreamId);
+    }
+
+    stream.entries.push_back({id, fields});
+    stream.last_id = id;
+    return id;
 }

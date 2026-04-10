@@ -185,7 +185,7 @@ static void update_epoll_interest(int epfd, FdInfo_t* fd_info) {
     }
 }
 
-static void enqueue_response(int epfd, FdInfo_t *fd_info, const std::string &response) {
+static void enqueue_response(int epfd, FdInfo_t *fd_info, const std::string& response) {
     fd_info->conn->outbuf.append(response);
     update_epoll_interest(epfd, fd_info);
 }

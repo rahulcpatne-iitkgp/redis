@@ -108,7 +108,7 @@ class KVStore {
 Uses C++23 `std::expected` for type-safe error propagation:
 ```cpp
 std::expected<std::string, KVError> get_string(const std::string& key);
-// Returns: value on success, KVError::NotFound or KVError::WrongType on failure
+// Get string value, or error if key not found/wrong type
 ```
 
 #### Implemented Operations
@@ -319,6 +319,9 @@ Store multiple data types in single map:
 std::variant<std::string, std::deque<std::string>> value;
 // Access: std::get<std::string>(obj.value)
 ```
+
+### 5. Avoid copy using std::string_view, std::span, etc.
+
 
 ---
 

@@ -5,6 +5,7 @@
 #include <span>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 
 void CommandRegistry::register_command(const std::string& name, CommandHandler handler) {
     handlers_[name] = std::move(handler);
@@ -269,12 +270,60 @@ namespace commands {
         }
         
         // List is empty, block and wait
-        using namespace std::chrono;
-        int64_t timeout_ms = timeout_seconds == 0.0
-            ? 0
-            : static_cast<int64_t>(std::ceil(timeout_seconds * 1000.0));
+        int64_t timeout_ms = (timeout_seconds == 0.0) ? 0
+                             : static_cast<int64_t>(std::ceil(timeout_seconds * 1000.0));
         ctx.block_on_key(key, timeout_ms);
+
         return "";  // Deferred response
+    }
+
+    std::string handle_xadd(const Command& cmd, CommandContext& ctx) {
+        if (cmd.args.empty() || (cmd.args.size() % 2 == 1)) {
+            return encode_error("ERR wrong number of arguments for 'xadd' command");
+        }
+        const std::string& key = cmd.args[0];
+        const std::string& id_str = cmd.args[1];
+        StreamId id;
+        try {
+            if (id_str == "*") {
+                id = ctx.store.genid_stream(key, std::nullopt, std::nullopt);
+            } else {
+                int idx = id_str.find('-');
+                uint64_t ms = std::stoull(id_str.substr(0, idx));
+                const std::string& seq_str = id_str.substr(idx+1);
+                if (seq_str == "*") {
+                    id = ctx.store.genid_stream(key, ms, std::nullopt);
+                } else {
+                    uint64_t seq = std::stoull(seq_str);
+                    id = ctx.store.genid_stream(key, ms, seq);
+                }
+            }
+        } catch (...) {
+            return encode_error("ERR invalid syntax for id");
+        }
+        Fields fields;
+        for (int i = 2; i < cmd.args.size()-1; i+= 2) {
+            const std::string& skey = cmd.args[i];
+            const std::string& sval = cmd.args[i+1];
+            fields.emplace_back(skey, sval);
+        }
+        const auto& result = ctx.store.xadd_stream(key, id, fields);
+        if (!result) {
+            switch (result.error())
+            {
+            case KVError::WrongType:
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+            case KVError::ZeroStreamId:
+                return encode_error("ERR The ID specified in XADD must be greater than 0-0");
+            case KVError::WrongStreamId:
+                return encode_error("ERR The ID specified in XADD is equal or smaller than the target stream top item");
+            default:
+                break;
+            }
+        }
+        StreamId res_id = result.value();
+        const std::string& response = std::to_string(res_id.ms) + "-" + std::to_string(res_id.seq);
+        return encode_bulk_string(response);
     }
 
     void register_all(CommandRegistry& registry) {
@@ -290,5 +339,6 @@ namespace commands {
         registry.register_command("LRANGE", handle_lrange);
         registry.register_command("LLEN", handle_llen);
         registry.register_command("BLPOP", handle_blpop);
+        registry.register_command("XADD", handle_xadd);
     }
 } // namespace commands
