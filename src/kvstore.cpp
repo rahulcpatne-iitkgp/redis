@@ -199,7 +199,7 @@ StreamId KVStore::genid_stream(const std::string& key, std::optional<uint64_t> i
     }
     auto it = find(key);
     if (it == data_.end()) {
-        result.seq = 0;
+        result.seq = result.ms == 0 ? 1 : 0;
     } else {
         if (it->second.type != ValueType::Stream) return StreamId{0,0}; // erroneous id
         auto& stream = std::get<Stream>(it->second.value);
