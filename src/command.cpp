@@ -111,11 +111,8 @@ namespace commands {
         auto result = ctx.store.type_of_key(cmd.args[0]);
         if (!result) {
             return encode_simple_string("none");
-        } else if (result.value() == ValueType::String) {
-            return encode_simple_string("string");
-        } else {
-            return encode_simple_string("list");
         }
+        return encode_simple_string(type_to_string(result.value()));
     }
 
     std::string handle_rpush(const Command& cmd, CommandContext& ctx) {
