@@ -24,14 +24,7 @@ enum class ValueType {
     Stream
 };
 
-const char* type_to_string(ValueType t) {
-    switch (t) {
-        case ValueType::String: return "String";
-        case ValueType::List:   return "List";
-        case ValueType::Stream: return "Stream";
-    }
-    return "Unknown";
-}
+const char* type_to_string(ValueType t);
 
 struct StreamId {
     uint64_t ms;

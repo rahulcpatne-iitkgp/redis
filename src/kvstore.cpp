@@ -3,6 +3,15 @@
 #include <cassert>
 #include <cstdint>
 
+const char* type_to_string(ValueType t) {
+    switch (t) {
+        case ValueType::String: return "String";
+        case ValueType::List:   return "List";
+        case ValueType::Stream: return "Stream";
+    }
+    return "Unknown";
+}
+
 int64_t KVStore::now_millis() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(
