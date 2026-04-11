@@ -5,11 +5,11 @@
 
 const char* type_to_string(ValueType t) {
     switch (t) {
-        case ValueType::String: return "String";
-        case ValueType::List:   return "List";
-        case ValueType::Stream: return "Stream";
+        case ValueType::String: return "string";
+        case ValueType::List:   return "list";
+        case ValueType::Stream: return "stream";
     }
-    return "Unknown";
+    return "none";
 }
 
 int64_t KVStore::now_millis() {
