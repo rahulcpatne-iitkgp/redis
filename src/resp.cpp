@@ -259,13 +259,13 @@ ParseResult<Command> parse_command(BufferCursor& cur) {
     }
 
     BulkString& cmd_name_bs = std::get<BulkString>(items[0]->data);
-    if (!cmd_name_bs.data) {
+    if (!cmd_name_bs.text) {
         cur.set_position(saved);
         return ParseResult<Command>(ParseError{"Command name cannot be null"});
     }
 
     Command cmd;
-    cmd.name = std::move(to_upper_str(*cmd_name_bs.data));
+    cmd.name = std::move(to_upper_str(*cmd_name_bs.text));
 
     for (size_t i = 1; i < items.size(); ++i) {
         if (!std::holds_alternative<BulkString>(items[i]->data)) {
@@ -274,12 +274,12 @@ ParseResult<Command> parse_command(BufferCursor& cur) {
         }
 
         BulkString& arg_bs = std::get<BulkString>(items[i]->data);
-        if (!arg_bs.data) {
+        if (!arg_bs.text) {
             cur.set_position(saved);
             return ParseResult<Command>(ParseError{"Command arguments cannot be null"});
         }
 
-        cmd.args.emplace_back(std::move(*arg_bs.data));
+        cmd.args.emplace_back(std::move(*arg_bs.text));
     }
 
     return cmd;
@@ -319,4 +319,27 @@ std::string encode_array(const std::optional<std::vector<std::string>>& items) {
 
 std::string encode_null_array() {
     return "*-1\r\n";
+}
+
+std::string RespValue::encode() const {
+    switch (data.index()) {
+        case 0: return encode_simple_string(std::get<SimpleString>(data).text);
+        case 1: return encode_error(std::get<ErrorString>(data).text);
+        case 2: return encode_integer(std::get<Integer>(data).value);
+        case 3: return encode_bulk_string(std::get<BulkString>(data).text);
+        case 4: {
+            const auto& arr = std::get<Array>(data).items;
+            if (!arr) {
+                return encode_null_array();
+            }
+            std::vector<std::string> items;
+            for (const auto& item : *arr) {
+                items.push_back(item->encode());
+            }
+            return encode_array(items);
+        }
+        default:
+            assert(false);
+            return "";
+    }
 }

@@ -58,7 +58,7 @@ struct Integer {
 };
 
 struct BulkString {
-    std::optional<std::string> data; // null bulk string => std::nullopt
+    std::optional<std::string> text; // null bulk string => std::nullopt
 };
 
 struct Array {
@@ -67,6 +67,7 @@ struct Array {
 
 struct RespValue {
     std::variant<SimpleString, ErrorString, Integer, BulkString, Array> data;
+    std::string encode() const;
 };
 
 struct Command {

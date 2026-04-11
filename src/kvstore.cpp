@@ -232,3 +232,30 @@ std::expected<StreamId, KVError> KVStore::xadd_stream(const std::string& key, co
     stream.last_id = id;
     return id;
 }
+
+std::expected<std::vector<StreamEntry>, KVError> KVStore::xrange_stream(const std::string& key, const StreamId start, const StreamId end) {
+    auto it = find(key);
+    if (it == data_.end()) {
+        return std::unexpected(KVError::NotFound);
+    }
+    if (it->second.type != ValueType::Stream) {
+        return std::unexpected(KVError::WrongType);
+    }
+    auto& stream = std::get<Stream>(it->second.value);
+    auto& entries = stream.entries;
+    if (end < start) return std::vector<StreamEntry>{};
+    auto it_start = std::find_if(entries.begin(), entries.end(),
+        [start](const StreamEntry& e) {
+            return start <= e.id;
+        }
+    );
+    if (it_start == entries.end()) return std::vector<StreamEntry>{};
+    auto it_end = std::find_if(entries.begin(), entries.end(),
+        [end](const StreamEntry& e) {
+            return end < e.id;
+        }
+    );
+    if (it_end == entries.begin()) return std::vector<StreamEntry>{};
+    std::vector<StreamEntry> result{it_start, it_end};
+    return result;
+}

@@ -40,6 +40,9 @@ struct StreamId {
     bool operator<=(const StreamId& other) const {
         return *this < other || *this == other;
     }
+    std::string to_string() const {
+        return std::to_string(ms) + "-" + std::to_string(seq);
+    }
 };
 
 using Fields = std::vector<std::pair<std::string, std::string>>;
@@ -80,6 +83,7 @@ public:
 
     std::expected<StreamId, KVError> xadd_stream(const std::string& key, const StreamId& id, const Fields& fields);
     StreamId genid_stream(const std::string& key, std::optional<uint64_t> id_ms, std::optional<uint64_t> id_seq);
+    std::expected<std::vector<StreamEntry>, KVError> xrange_stream(const std::string& key, StreamId start, StreamId end);
 
 private:
     std::unordered_map<std::string, RedisObject> data_;

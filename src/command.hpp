@@ -49,6 +49,7 @@ namespace commands {
     std::string handle_blpop(const Command& cmd, CommandContext& ctx);
 
     std::string handle_xadd(const Command& cmd, CommandContext& ctx);
+    std::string handle_xrange(const Command& cmd, CommandContext& ctx);
     
     void register_all(CommandRegistry& registry);
 }

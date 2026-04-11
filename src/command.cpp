@@ -323,6 +323,63 @@ namespace commands {
         return encode_bulk_string(response);
     }
 
+    std::string handle_xrange(const Command& cmd, CommandContext& ctx) {
+        if (cmd.args.size() != 3) {
+            return encode_error("ERR wrong number of arguments for 'xrange' command");
+        }
+        const std::string& key = cmd.args[0];
+        const std::string& start_str = cmd.args[1];
+        const std::string& end_str = cmd.args[2];
+        StreamId start, end;
+        try {
+            int start_sep_idx = start_str.find('-');
+            int end_sep_idx = end_str.find('-');
+            
+            if (start_sep_idx == std::string::npos) {
+                start.ms = std::stoull(start_str);
+                start.seq = 0;
+            } else {
+                start.ms = std::stoull(start_str.substr(0, start_sep_idx));
+                start.seq = std::stoull(start_str.substr(start_sep_idx + 1));
+            }
+            
+            if (end_sep_idx == std::string::npos) {
+                end = ctx.store.genid_stream(key, std::stoull(end_str), std::nullopt);
+            } else {
+                end.ms = std::stoull(end_str.substr(0, end_sep_idx));
+                end.seq = std::stoull(end_str.substr(end_sep_idx + 1));
+            }
+        } catch (...) {
+            return encode_error("ERR invalid stream ID in 'xrange' command arguments");
+        }
+        const auto& result = ctx.store.xrange_stream(key, start, end);
+        if (!result) {
+            if (result.error() == KVError::NotFound) {  
+                return encode_array(std::vector<std::string>{});
+            } else if (result.error() == KVError::WrongType) {
+                return encode_error("WRONGTYPE Operation against a key holding the wrong kind of value");
+            }
+        }
+        const auto& entries = result.value();
+        // Top-level array
+        std::string response = "*" + std::to_string(entries.size()) + "\r\n";
+
+        for (const auto& entry : entries) {
+            response += "*2\r\n";
+            
+            response += encode_bulk_string(entry.id.to_string());
+
+            // Fields array (key1, val1, key2, val2, ...)
+            response += "*" + std::to_string(entry.fields.size()*2) + "\r\n";
+            for (const auto& field : entry.fields) {
+                response += encode_bulk_string(field.first);
+                response += encode_bulk_string(field.second);
+            }
+        }
+
+        return response;
+    }
+
     void register_all(CommandRegistry& registry) {
         registry.register_command("PING", handle_ping);
         registry.register_command("ECHO", handle_echo);
@@ -337,5 +394,6 @@ namespace commands {
         registry.register_command("LLEN", handle_llen);
         registry.register_command("BLPOP", handle_blpop);
         registry.register_command("XADD", handle_xadd);
+        registry.register_command("XRANGE", handle_xrange);
     }
 } // namespace commands
